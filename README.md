@@ -1,7 +1,10 @@
 # Hospital Pharmacy Calculator
 
+### ▶ [Open the calculator](https://pharmacy-calculator.streamlit.app)
+
 Seven clinical calculations pharmacists and pharmacy students actually need at
-the counter or on the ward, in a terminal app and a mobile-friendly web app.
+the counter or on the ward. Runs in the browser on any phone — nothing to
+install — and as a terminal app if you prefer.
 
 > **For educational and reference use only.** Every result must be verified
 > against your institutional protocol before clinical use. This tool does not
@@ -26,10 +29,14 @@ the counter or on the ward, in a terminal app and a mobile-friendly web app.
 
 ## Quick start
 
-Terminal version — needs Python 3.9 or newer, nothing else:
+Most people want the web version: **[pharmacy-calculator.streamlit.app](https://pharmacy-calculator.streamlit.app)**.
+Nothing to install.
+
+To run it yourself instead — terminal version, needs Python 3.9 or newer and
+nothing else:
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/pharmacy-calculator.git
+git clone https://github.com/DrHealthTechAI/pharmacy-calculator.git
 ```
 
 ```bash
