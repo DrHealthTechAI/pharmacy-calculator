@@ -39,6 +39,12 @@ st.sidebar.caption(
     "**For educational and reference use only.** Always verify every result "
     "against your institutional protocol before clinical use."
 )
+st.sidebar.markdown("---")
+st.sidebar.caption(
+    "Also available: "
+    "[ABG Calculator](https://abg-calculator.streamlit.app) "
+    "— blood gas interpretation, anion gap and compensation."
+)
 
 
 # --------------------------------------------------------------------------
