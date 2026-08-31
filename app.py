@@ -217,6 +217,12 @@ st.sidebar.caption(
     "[ABG Calculator](https://abg-calculator.streamlit.app) "
     "— blood gas interpretation, anion gap and compensation."
 )
+st.sidebar.markdown("---")
+st.sidebar.caption(
+    "Also available: "
+    "[Insulin Dose Calculator](https://insulin-calculator.streamlit.app) "
+    "— TDD, basal/bolus, ICR, ISF and correction doses."
+)
 
 
 def explain(title, body):

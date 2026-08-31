@@ -88,6 +88,10 @@ clearance of 64.81 mL/min, and 1000 mL at 15 gtt/mL over 8 hours must give
   gas interpretation, anion gap, Winter's formula, delta ratio and A-a gradient.
   ([source](https://github.com/DrHealthTechAI/abg-calculator))
 
+- **[Insulin Dose Calculator](https://insulin-calculator.streamlit.app)** — total daily dose,
+  basal/bolus split, ICR, ISF, correction and mealtime doses.
+  ([source](https://github.com/DrHealthTechAI/insulin-calculator))
+
 ## Contributing
 
 Corrections to any formula are very welcome, especially from practising
