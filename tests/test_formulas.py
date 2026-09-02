@@ -202,3 +202,80 @@ def test_mg_per_kg_dose():
 def test_mg_per_kg_rejects_zero_doses():
     with pytest.raises(ValueError):
         f.mg_per_kg_dose(20, 30, 0)
+
+
+# --------------------------------------------------------------------------
+# WHO Asia-Pacific BMI classification
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("value,expected", [
+    (17.0, "Underweight"),
+    (18.5, "Normal weight"),
+    (22.9, "Normal weight"),
+    (23.0, "Overweight (at risk)"),
+    (24.9, "Overweight (at risk)"),
+    (25.0, "Obesity class I"),
+    (29.9, "Obesity class I"),
+    (30.0, "Obesity class II"),
+    (45.0, "Obesity class II"),
+])
+def test_asia_pacific_bmi_bands(value, expected):
+    assert f.bmi_class_asia_pacific(value) == expected
+
+
+def test_asia_pacific_is_stricter_than_international():
+    # BMI 24 is normal internationally but overweight in the Asia-Pacific scale.
+    assert f.bmi_class(24.0) == "Normal weight"
+    assert f.bmi_class_asia_pacific(24.0) == "Overweight (at risk)"
+
+
+def test_asia_pacific_has_two_obesity_classes_not_three():
+    names = {name for name, _ in f.BMI_BANDS_ASIA_PACIFIC}
+    assert "Obesity class III (morbid obesity)" not in names
+    assert "Obesity class II" in names
+
+
+def test_band_tables_match_the_classifiers():
+    # Every label a classifier can return must appear in its band table.
+    who_names = {name for name, _ in f.BMI_BANDS_WHO}
+    ap_names = {name for name, _ in f.BMI_BANDS_ASIA_PACIFIC}
+    for value in (15, 20, 24, 27, 32, 37, 45):
+        assert f.bmi_class(value) in who_names
+        assert f.bmi_class_asia_pacific(value) in ap_names
+
+
+def test_crcl_band_table_matches_the_classifier():
+    names = {name for name, _ in f.CRCL_BANDS}
+    for value in (120, 75, 45, 20, 5):
+        assert f.renal_function_stage(value) in names
+
+
+# --------------------------------------------------------------------------
+# Serum sodium classification and correction rate
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("sodium,expected", [
+    (130, "Hyponatraemia - this calculator does not apply"),
+    (140, "Normal serum sodium"),
+    (145, "Normal serum sodium"),
+    (150, "Hypernatraemia"),
+    (159, "Hypernatraemia"),
+    (160, "Hypernatraemia - severe symptoms typically occur above 160"),
+    (180, "Hypernatraemia - severe symptoms typically occur above 160"),
+])
+def test_sodium_status(sodium, expected):
+    assert f.sodium_status(sodium) == expected
+
+
+def test_acute_allows_faster_correction_than_chronic():
+    assert (f.max_sodium_fall_per_day("acute")
+            > f.max_sodium_fall_per_day("chronic"))
+
+
+def test_chronic_correction_limit_is_the_conventional_figure():
+    assert f.max_sodium_fall_per_day("chronic") == pytest.approx(10.0)
+
+
+def test_correction_rate_rejects_unknown_onset():
+    with pytest.raises(ValueError):
+        f.max_sodium_fall_per_day("subacute")

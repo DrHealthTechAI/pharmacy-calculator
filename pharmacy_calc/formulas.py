@@ -57,6 +57,43 @@ def free_water_deficit(weight_kg, serum_sodium, age_group, sex, target_sodium=14
     return tbw * ((serum_sodium / target_sodium) - 1)
 
 
+# Serum sodium reference points, mEq/L.
+SODIUM_LOW, SODIUM_HIGH = 135.0, 145.0
+SODIUM_SEVERE_SYMPTOMS = 160.0
+
+
+def sodium_status(serum_sodium):
+    """Classify a serum sodium.
+
+    Hypernatraemia is a sodium above 145 mEq/L. Sources disagree on where
+    "moderate" and "severe" begin -- figures between 151 and 160 are all
+    quoted -- so this reports only the well-agreed boundaries, and flags the
+    level above which severe symptoms typically appear.
+    """
+    if serum_sodium < SODIUM_LOW:
+        return "Hyponatraemia - this calculator does not apply"
+    if serum_sodium <= SODIUM_HIGH:
+        return "Normal serum sodium"
+    if serum_sodium < SODIUM_SEVERE_SYMPTOMS:
+        return "Hypernatraemia"
+    return "Hypernatraemia - severe symptoms typically occur above 160"
+
+
+def max_sodium_fall_per_day(onset):
+    """Maximum safe fall in serum sodium, mEq/L per 24 hours.
+
+    Acute hypernatraemia (developed within 24 hours) can be corrected more
+    quickly because the brain has not yet generated protective osmolytes.
+    Chronic, or of unknown duration, must be corrected slowly.
+    """
+    onset = onset.strip().lower()
+    if onset == "acute":
+        return 24.0     # roughly 1 mEq/L/hour, correcting over about 24 hours
+    if onset == "chronic":
+        return 10.0     # the conventional 10-12 mEq/L limit, over 48 hours
+    raise ValueError("onset must be acute or chronic")
+
+
 # --------------------------------------------------------------------------
 # Body mass index
 # --------------------------------------------------------------------------
@@ -70,7 +107,7 @@ def bmi(weight_kg, height_cm):
 
 
 def bmi_class(value):
-    """WHO body mass index category."""
+    """WHO international body mass index category."""
     if value < 18.5:
         return "Underweight"
     if value < 25:
@@ -82,6 +119,44 @@ def bmi_class(value):
     if value < 40:
         return "Obesity class II"
     return "Obesity class III (morbid obesity)"
+
+
+def bmi_class_asia_pacific(value):
+    """WHO Asia-Pacific body mass index category (WPRO, 2000).
+
+    Lower cut-offs than the international classification, because Asian
+    populations carry more body fat and higher cardiometabolic risk at any
+    given BMI. Note the structure differs: two obesity classes here, not three.
+    """
+    if value < 18.5:
+        return "Underweight"
+    if value < 23:
+        return "Normal weight"
+    if value < 25:
+        return "Overweight (at risk)"
+    if value < 30:
+        return "Obesity class I"
+    return "Obesity class II"
+
+
+# Band boundaries, kept beside the classifiers so the app can render them as a
+# table without the numbers being written out twice.
+BMI_BANDS_WHO = [
+    ("Underweight", "< 18.5"),
+    ("Normal weight", "18.5 - 24.9"),
+    ("Overweight", "25.0 - 29.9"),
+    ("Obesity class I", "30.0 - 34.9"),
+    ("Obesity class II", "35.0 - 39.9"),
+    ("Obesity class III (morbid obesity)", ">= 40.0"),
+]
+
+BMI_BANDS_ASIA_PACIFIC = [
+    ("Underweight", "< 18.5"),
+    ("Normal weight", "18.5 - 22.9"),
+    ("Overweight (at risk)", "23.0 - 24.9"),
+    ("Obesity class I", "25.0 - 29.9"),
+    ("Obesity class II", ">= 30.0"),
+]
 
 
 def feet_inches_to_cm(feet, inches=0):
@@ -175,6 +250,15 @@ def creatinine_clearance(age, weight_kg, serum_creatinine, sex):
     if sex == "f":
         crcl *= 0.85
     return crcl
+
+
+CRCL_BANDS = [
+    ("Normal renal function", ">= 90"),
+    ("Mildly decreased", "60 - 89"),
+    ("Moderate impairment", "30 - 59"),
+    ("Severe impairment", "15 - 29"),
+    ("Kidney failure", "< 15"),
+]
 
 
 def renal_function_stage(crcl):

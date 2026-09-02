@@ -178,6 +178,18 @@ HELP = {
         "(overweight ≥23, obese ≥27.5) because cardiometabolic risk rises at a "
         "lower BMI."
     ),
+    "out_sodium_status": (
+        "Hypernatraemia is a serum sodium above 145 mEq/L. Sources disagree on "
+        "where 'moderate' and 'severe' begin — figures between 151 and 160 are "
+        "all quoted — so only the well-agreed boundaries are shown. Severe "
+        "symptoms typically appear above 160."
+    ),
+    "onset": (
+        "**This changes the safe correction rate.** Acute hypernatraemia, "
+        "developed within 24 hours, may be corrected faster because the brain "
+        "has not yet generated protective osmolytes. Chronic, or of unknown "
+        "duration, must be corrected slowly. **If in doubt, treat as chronic.**"
+    ),
     "out_tbw": (
         "Estimated total body water in litres — the volume the sodium is "
         "dissolved in, and the basis for the deficit calculation."
@@ -255,8 +267,19 @@ if choice == "Creatinine clearance":
         st.warning("Renal dose adjustment may be required.")
     st.latex(r"CrCl = \frac{(140 - age) \times weight}{72 \times SCr}"
              r"\;\times\; 0.85 \text{ if female}")
-    st.caption(f"Interpretation: {stage}. This describes the calculated value, "
-               "not a formal CKD stage.")
+
+    st.markdown("**Classification bands**")
+    st.markdown(
+        "| Interpretation | CrCl (mL/min) |\n|---|---|\n" + "\n".join(
+            f"| {name}{' ←' if name == stage else ''} | {band} |"
+            for name, band in f.CRCL_BANDS
+        )
+    )
+    st.caption(
+        "← marks this patient's band. These describe the calculated clearance "
+        "and are not formal CKD stages — CKD staging is defined on eGFR, not "
+        "on Cockcroft-Gault."
+    )
 
     explain("creatinine clearance", """
 Creatinine is produced steadily by muscle and cleared almost entirely by the
@@ -518,27 +541,82 @@ elif choice == "Body mass index":
         col2.caption(f"= {height_cm:.1f} cm")
 
     value = f.bmi(weight, height_cm)
-    st.metric("BMI", f"{value:.1f} kg/m²", f.bmi_class(value),
+    who_class = f.bmi_class(value)
+    ap_class = f.bmi_class_asia_pacific(value)
+
+    st.metric("BMI", f"{value:.1f} kg/m²", who_class,
               delta_color="off", help=HELP["out_bmi"])
-    st.caption("Categories shown use the WHO international cutoffs.")
+
+    col1, col2 = st.columns(2)
+    col1.markdown(f"**WHO international**  \n{who_class}")
+    col2.markdown(f"**WHO Asia-Pacific**  \n{ap_class}")
+
+    if who_class != ap_class:
+        st.warning(
+            f"The two classifications disagree: **{who_class}** by the WHO "
+            f"international cut-offs, **{ap_class}** by the Asia-Pacific "
+            "cut-offs. Asian populations carry higher cardiometabolic risk at "
+            "the same BMI. Use whichever your service has adopted."
+        )
+
+    st.markdown("**Classification bands**")
+
+    def band_table(bands, current):
+        return (
+            "| Category | BMI (kg/m²) |\n|---|---|\n"
+            + "\n".join(
+                f"| {name}{' ←' if name == current else ''} | {band} |"
+                for name, band in bands
+            )
+        )
+
+    col1, col2 = st.columns(2)
+    col1.markdown("**WHO international**")
+    col1.markdown(band_table(f.BMI_BANDS_WHO, who_class))
+    col2.markdown("**WHO Asia-Pacific**")
+    col2.markdown(band_table(f.BMI_BANDS_ASIA_PACIFIC, ap_class))
+
+    st.caption(
+        "← marks this patient's band on each scale. The two are shown "
+        "separately because their structure differs: the Asia-Pacific "
+        "classification has two obesity classes rather than three, and its "
+        "boundaries do not line up with the international ones."
+    )
 
     explain("body mass index", """
 BMI is weight divided by height squared — a quick screen for whether body weight
 is appropriate for height. It is a population measure applied to an individual,
 so it comes with real limits.
 
-**The categories are not universal.** This calculator uses the WHO international
-cutoffs:
+**Why the obesity class matters, not just "obese".** Management is
+class-dependent, so collapsing everything above 30 into one label loses the
+information that drives the decision:
 
-| | WHO international | South Asian criteria |
+| Class | WHO international | What typically changes |
 |---|---|---|
-| Overweight | ≥ 25 | ≥ 23 |
-| Obese | ≥ 30 | ≥ 27.5 |
+| Overweight | 25.0 – 29.9 | Lifestyle intervention; treat comorbidities |
+| Obesity class I | 30.0 – 34.9 | Lifestyle plus pharmacotherapy considered; surgery considered where metabolic disease is present |
+| Obesity class II | 35.0 – 39.9 | Metabolic and bariatric surgery recommended regardless of comorbidity |
+| Obesity class III | ≥ 40.0 | Surgery recommended; higher perioperative risk |
 
-South Asian populations develop insulin resistance and cardiovascular risk at a
-**lower** BMI, because of a higher proportion of body fat at any given BMI. A
-patient at 24 is "normal" by the WHO scale and already overweight by the Asian
-one. Check which criteria your service uses.
+The 2022 ASMBS/IFSO guidelines recommend metabolic and bariatric surgery at
+**BMI ≥ 35 regardless of the presence or severity of obesity-related
+conditions**, and say it should be considered at **BMI 30–34.9 with metabolic
+disease** — with metabolic surgery endorsed from BMI 30 in type 2 diabetes.
+These replaced the 1991 NIH criteria. Thresholds still vary between health
+systems, so check what your service applies.
+
+**The categories are not universal.** This calculator classifies using the WHO
+international cut-offs, and shows the WHO Asia-Pacific classification (WPRO,
+2000) alongside. The Asia-Pacific scale sets lower boundaries and has a
+different structure — two obesity classes, not three — because Asian
+populations carry a higher proportion of body fat and greater cardiometabolic
+risk at any given BMI.
+
+A patient at BMI 24 is **normal weight** internationally and **overweight** by
+the Asia-Pacific classification. The same 2022 surgical guidelines adjust for
+this, suggesting Asian patients be considered for surgery from **BMI 27.5**
+rather than 35.
 
 **What BMI cannot tell you.** It does not distinguish muscle from fat, so a
 muscular person can classify as overweight while being perfectly healthy. It
@@ -570,12 +648,48 @@ elif choice == "Free water deficit":
     col1.metric("Total body water", f"{tbw:.1f} L", help=HELP["out_tbw"])
     col2.metric("Water deficit", f"{deficit:.2f} L", help=HELP["out_deficit"])
 
+    status = f.sodium_status(sodium)
     if deficit > 0:
-        st.warning("Correct slowly. Serum sodium should not fall faster than "
-                   "10-12 mEq/L in 24 hours.")
+        st.metric("Serum sodium", f"{sodium:.0f} mEq/L", status,
+                  delta_color="off", help=HELP["out_sodium_status"])
+
+        onset_label = st.radio(
+            "How long has the hypernatraemia been present?",
+            ["Chronic or unknown duration", "Acute (developed within 24 hours)"],
+            help=HELP["onset"],
+        )
+        onset = "acute" if onset_label.startswith("Acute") else "chronic"
+        max_fall = f.max_sodium_fall_per_day(onset)
+        target_24h = sodium - max_fall
+
+        if onset == "chronic":
+            st.warning(
+                f"**Correct slowly.** Sodium should fall no faster than "
+                f"**{max_fall:.0f} mEq/L in 24 hours** — aim for no lower than "
+                f"about **{target_24h:.0f} mEq/L** by this time tomorrow, "
+                "correcting fully over roughly 48 hours. The brain has "
+                "generated protective osmolytes; lowering sodium faster than it "
+                "can unload them causes cerebral oedema and seizures."
+            )
+        else:
+            st.warning(
+                f"**Acute hypernatraemia** may be corrected faster — up to "
+                f"about **1–2 mEq/L per hour**, roughly {max_fall:.0f} mEq/L "
+                "over 24 hours — because protective osmolytes have not yet "
+                "formed. Only apply this if you are confident it developed "
+                "within the last 24 hours. **If the duration is uncertain, "
+                "treat it as chronic.**"
+            )
+
+        if sodium >= f.SODIUM_SEVERE_SYMPTOMS:
+            st.error(
+                f"Sodium {sodium:.0f} mEq/L — severe symptoms typically occur "
+                "above 160. Escalate rather than managing this from a "
+                "calculator."
+            )
     else:
-        st.info("Serum sodium is at or below target, so this formula does "
-                "not apply.")
+        st.info(f"{status}. Serum sodium is at or below the target used here, "
+                "so the free water deficit formula does not apply.")
 
     explain("free water deficit", """
 In hypernatraemia the problem is usually not too much sodium but **too little
@@ -588,9 +702,26 @@ to target.
 
 **The rate matters more than the volume.** Brain cells adapt to a high sodium by
 generating osmolytes. Lower the sodium faster than they can unload those and
-water rushes into the cells, causing cerebral oedema and seizures. The
-conventional limit is a fall of no more than **10–12 mEq/L in 24 hours**, and
-slower still in chronic hypernatraemia.
+water rushes into the cells, causing cerebral oedema and seizures.
+
+**How fast depends on how long it has been present:**
+
+| Onset | Safe correction |
+|---|---|
+| **Acute** — developed within 24 hours | Up to about 1–2 mEq/L per hour, correcting over roughly 24 hours |
+| **Chronic**, or of unknown duration | No more than 10–12 mEq/L in 24 hours, correcting over about 48 hours |
+
+The distinction exists because protective osmolytes take days to accumulate. A
+patient whose sodium rose in the last few hours has not yet formed them and
+tolerates faster correction; one who has been hypernatraemic for a week has, and
+does not. **When the duration is uncertain, treat it as chronic** — the cost of
+correcting an acute case too slowly is far lower than the cost of correcting a
+chronic one too fast.
+
+**On severity.** Hypernatraemia is a sodium above 145 mEq/L. Where "moderate"
+and "severe" begin is genuinely disputed — different sources place the severe
+threshold anywhere from 152 to 160 — so this calculator reports only the agreed
+definition and flags 160, above which severe symptoms typically appear.
 
 **What this figure does not include:**
 
