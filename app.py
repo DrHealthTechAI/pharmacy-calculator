@@ -48,6 +48,18 @@ HELP = {
         "ideal by more than about 30%. This calculator uses whatever weight "
         "you enter — follow your own protocol."
     ),
+    "weight_basis": (
+        "Which weight goes into the equation. **Auto** applies the "
+        "conventional rule: actual when the patient is below ideal weight, "
+        "ideal within 130% of it, adjusted above that. Override it when the "
+        "rule does not fit the patient — an amputee, gross oedema or ascites, "
+        "or an unusually muscular patient."
+    ),
+    "height_crcl": (
+        "Needed to calculate **ideal body weight**, which the Devine formula "
+        "derives from height and sex alone. Without it, only actual body "
+        "weight is available."
+    ),
     "scr": (
         "Serum creatinine, a breakdown product of muscle metabolism cleared by "
         "the kidneys. Typical range 0.6–1.2 mg/dL. It must be **stable** for "
@@ -269,12 +281,119 @@ if choice == "Creatinine clearance":
                             step=0.1, help=HELP["scr"])
     sex = col2.selectbox("Sex", ["Male", "Female"], help=HELP["sex_crcl"])
 
+    hcol1, hcol2, hcol3 = st.columns(3)
+    height_unit = hcol1.radio("Height in", ["cm", "feet + inches"],
+                              key="crcl_height_unit", help=HELP["height_crcl"])
+    if height_unit == "cm":
+        height = hcol2.number_input("Height (cm)", 100.0, 250.0, 170.0,
+                                    step=1.0, key="crcl_height_cm")
+    else:
+        feet = hcol2.number_input("Feet", 3, 8, 5, key="crcl_feet")
+        inches = hcol3.number_input("Inches", 0.0, 11.5, 7.0, step=0.5,
+                                    key="crcl_inches")
+        height = f.feet_inches_to_cm(feet, inches)
+        hcol3.caption(f"= {height:.1f} cm")
+
     crcl = f.creatinine_clearance(age, weight, scr, sex[0])
     stage = f.renal_function_stage(crcl)
 
-    st.metric("Creatinine clearance", f"{crcl:.1f} mL/min", stage,
+    # --- which weight goes into the equation ------------------------------
+    ideal = f.ideal_body_weight(height, sex[0])
+    adjusted = f.adjusted_body_weight(weight, ideal)
+    indicated_name, indicated_weight, reason = f.indicated_dosing_weight(
+        weight, height, sex[0]
+    )
+
+    weights = [
+        ("Actual", weight),
+        ("Ideal", ideal),
+        ("Adjusted", adjusted),
+    ]
+    results = [
+        (name, w, f.creatinine_clearance(age, w, scr, sex[0]))
+        for name, w in weights
+    ]
+
+    basis = st.radio(
+        "Weight basis",
+        ["Auto (recommended)", "Actual", "Ideal", "Adjusted"],
+        horizontal=True,
+        help=HELP["weight_basis"],
+    )
+
+    if basis.startswith("Auto"):
+        chosen_name, chosen_weight = indicated_name, indicated_weight
+        chosen_reason = reason
+    else:
+        chosen_name = basis
+        chosen_weight = dict(weights)[basis]
+        chosen_reason = (
+            f"{basis} body weight selected manually"
+            + ("" if basis == indicated_name
+               else f"; {indicated_name.lower()} would be indicated here")
+        )
+
+    chosen_crcl = f.creatinine_clearance(age, chosen_weight, scr, sex[0])
+    st.metric(f"Creatinine clearance ({chosen_name.lower()} body weight)",
+              f"{chosen_crcl:.1f} mL/min",
+              f.renal_function_stage(chosen_crcl),
               delta_color="off", help=HELP["out_crcl"])
-    if crcl < 60:
+    st.caption(f"Using {chosen_weight:.1f} kg. {chosen_reason}.")
+
+    if not basis.startswith("Auto") and chosen_name != indicated_name:
+        st.info(
+            f"You have overridden the indicated weight. **{indicated_name}** "
+            f"({indicated_weight:.1f} kg) would give "
+            f"**{f.creatinine_clearance(age, indicated_weight, scr, sex[0]):.1f} "
+            "mL/min**."
+        )
+
+    st.markdown("**All three dosing weights**")
+    st.markdown(
+        "| Weight basis | Weight | CrCl | Interpretation |\n|---|---|---|---|\n"
+        + "\n".join(
+            f"| {name}{' ←' if name == chosen_name else ''} | {w:.1f} kg | "
+            f"{v:.1f} mL/min | {f.renal_function_stage(v)} |"
+            for name, w, v in results
+        )
+    )
+
+    # Show the working, with this patient's own numbers substituted in, so it
+    # can be checked by hand.
+    inches_over = (height / f.CM_PER_INCH) - 60
+    ibw_base = 50.0 if sex == "Male" else 45.5
+    st.markdown("**How each weight was derived**")
+    st.markdown(
+        f"- **Actual** — as entered → **{weight:.1f} kg**\n"
+        f"- **Ideal** — {ibw_base} + (2.3 × {inches_over:.1f} in over 5 ft) "
+        f"→ **{ideal:.1f} kg**  \n"
+        f"  *{height:.1f} cm = {height / f.CM_PER_INCH:.1f} in, "
+        f"which is {inches_over:.1f} in over 5 ft (60 in)*\n"
+        f"- **Adjusted** — {ideal:.1f} + 0.4 × ({weight:.1f} − {ideal:.1f}) "
+        f"→ **{adjusted:.1f} kg**"
+    )
+    st.caption(
+        f"Ideal body weight uses {ibw_base} kg as the base for "
+        f"{'males' if ibw_base == 50.0 else 'females'} (Devine, 1974). "
+        "Then each weight goes into Cockcroft-Gault in turn."
+    )
+
+    spread = max(v for _, _, v in results) - min(v for _, _, v in results)
+    if spread >= 15:
+        st.warning(
+            f"The three weights give results **{spread:.0f} mL/min apart**. "
+            "Which weight you use changes the dosing decision for this "
+            "patient — confirm against your institutional protocol."
+        )
+
+    if height < 152.4:
+        st.info(
+            "Ideal body weight below 5 feet (152 cm) is extrapolated from the "
+            "Devine formula, which was derived for adults of 5 feet and above. "
+            "Treat it with caution."
+        )
+
+    if chosen_crcl < 60:
         st.warning("Renal dose adjustment may be required.")
     st.latex(r"CrCl = \frac{(140 - age) \times weight}{72 \times SCr}"
              r"\;\times\; 0.85 \text{ if female}")
@@ -303,11 +422,40 @@ chronic kidney disease — a different question.
 
 **Three things that make the result unreliable:**
 
-- **Which weight you use.** With *actual* body weight the equation overestimates
-  clearance in obesity, since fat produces little creatinine. Many institutions
-  use ideal body weight, or adjusted body weight when actual exceeds ideal by
-  more than about 30%. Follow your own protocol — this calculator uses the
-  number you type in.
+- **Which weight you use.** This is the big one, and the calculator now shows
+  all three so you can see the difference rather than having to remember it.
+
+  | Weight | Formula | When it is conventionally used |
+  |---|---|---|
+  | **Actual (ABW)** | as measured | When the patient weighs **less** than ideal |
+  | **Ideal (IBW)** | Men 50 kg, women 45.5 kg, **+ 2.3 kg per inch over 5 ft** | The usual default in pharmacy practice |
+  | **Adjusted (AdjBW)** | `IBW + 0.4 × (actual − IBW)` | Once actual exceeds ideal by more than about 30% |
+
+  Fat tissue produces almost no creatinine, so actual body weight inflates the
+  result in obesity — the equation reports better kidney function than the
+  patient has. Adjusted body weight counts 40% of the excess, on the basis that
+  adipose tissue is not entirely inert.
+
+  A worked example of how much this matters: a 60-year-old man, 120 kg, 170 cm,
+  creatinine 1.0 mg/dL gives **133 mL/min on actual weight** — reported as
+  normal renal function — but **73 mL/min on ideal weight**, which is mildly
+  decreased. That difference decides whether a renally cleared drug is given at
+  full dose.
+
+  **Sources.** Ideal body weight is the **Devine formula (B. J. Devine, 1974)**,
+  originally devised for drug dosing. The 0.4 adjustment factor is the one used
+  for **drug dosing and renal function estimation** — nutritional requirement
+  calculations use 0.25 instead, so do not carry this figure across to feeding
+  calculations.
+
+  **Practice genuinely varies.** Cockcroft and Gault derived the original
+  equation using *actual* body weight, and the obesity threshold is quoted
+  anywhere between **20% and 30%** above ideal depending on the source; this
+  calculator uses 30%. The three-way comparison table is this app's own
+  presentation, not a published standard — it exists so you can see whether the
+  choice of weight actually changes the decision for your patient. The
+  calculator marks the conventionally indicated weight but shows all three,
+  because this is a decision for you and your protocol, not for the software.
 - **Unstable renal function.** The equation assumes creatinine is in steady
   state. During acute kidney injury, while it is still climbing, true clearance
   is already far worse than the calculated figure suggests.

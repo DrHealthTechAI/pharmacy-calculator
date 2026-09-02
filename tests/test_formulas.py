@@ -279,3 +279,86 @@ def test_chronic_correction_limit_is_the_conventional_figure():
 def test_correction_rate_rejects_unknown_onset():
     with pytest.raises(ValueError):
         f.max_sodium_fall_per_day("subacute")
+
+
+# --------------------------------------------------------------------------
+# Dosing weights for Cockcroft-Gault
+# --------------------------------------------------------------------------
+
+def test_ideal_body_weight_male():
+    # 170 cm = 66.93 in, 6.93 in over 5 ft: 50 + 2.3 x 6.93 = 65.94 kg
+    assert f.ideal_body_weight(170, "m") == pytest.approx(65.94, abs=0.01)
+
+
+def test_ideal_body_weight_female_is_4_5_kg_lower():
+    male = f.ideal_body_weight(170, "m")
+    female = f.ideal_body_weight(170, "f")
+    assert male - female == pytest.approx(4.5)
+
+
+def test_ideal_body_weight_at_exactly_five_feet():
+    # 152.4 cm is 5 ft exactly, so IBW is the base value with nothing added.
+    assert f.ideal_body_weight(152.4, "m") == pytest.approx(50.0, abs=0.01)
+    assert f.ideal_body_weight(152.4, "f") == pytest.approx(45.5, abs=0.01)
+
+
+def test_ideal_body_weight_rejects_bad_sex():
+    with pytest.raises(ValueError):
+        f.ideal_body_weight(170, "x")
+
+
+def test_adjusted_body_weight():
+    # IBW 65.94, actual 120: 65.94 + 0.4 x (120 - 65.94) = 87.56
+    ideal = f.ideal_body_weight(170, "m")
+    assert f.adjusted_body_weight(120, ideal) == pytest.approx(87.56, abs=0.01)
+
+
+def test_adjusted_sits_between_ideal_and_actual():
+    ideal = f.ideal_body_weight(170, "m")
+    adjusted = f.adjusted_body_weight(120, ideal)
+    assert ideal < adjusted < 120
+
+
+def test_adjusted_equals_ideal_when_actual_equals_ideal():
+    ideal = f.ideal_body_weight(170, "m")
+    assert f.adjusted_body_weight(ideal, ideal) == pytest.approx(ideal)
+
+
+def test_obese_patient_is_given_adjusted_weight():
+    name, weight, reason = f.indicated_dosing_weight(120, 170, "m")
+    assert name == "Adjusted"
+    assert weight == pytest.approx(87.56, abs=0.01)
+    assert "182%" in reason
+
+
+def test_underweight_patient_is_given_actual_weight():
+    name, weight, _ = f.indicated_dosing_weight(50, 170, "m")
+    assert name == "Actual"
+    assert weight == pytest.approx(50.0)
+
+
+def test_normal_weight_patient_is_given_ideal_weight():
+    name, weight, _ = f.indicated_dosing_weight(70, 170, "m")
+    assert name == "Ideal"
+    assert weight == pytest.approx(f.ideal_body_weight(170, "m"))
+
+
+def test_actual_weight_overestimates_clearance_in_obesity():
+    # The whole reason this feature exists: the same patient reads as normal
+    # on actual weight and impaired on ideal weight.
+    on_actual = f.creatinine_clearance(60, 120, 1.0, "m")
+    ideal = f.ideal_body_weight(170, "m")
+    on_ideal = f.creatinine_clearance(60, ideal, 1.0, "m")
+
+    assert on_actual == pytest.approx(133.3, abs=0.1)
+    assert on_ideal == pytest.approx(73.3, abs=0.1)
+    assert f.renal_function_stage(on_actual) == "Normal renal function"
+    assert f.renal_function_stage(on_ideal) == "Mildly decreased"
+
+
+def test_the_three_weights_converge_for_a_normal_sized_patient():
+    # No obesity, so actual, ideal and adjusted should be close together.
+    ideal = f.ideal_body_weight(170, "m")
+    adjusted = f.adjusted_body_weight(68, ideal)
+    assert abs(68 - ideal) < 5
+    assert abs(adjusted - ideal) < 5

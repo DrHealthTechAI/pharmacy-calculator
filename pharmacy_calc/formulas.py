@@ -252,6 +252,74 @@ def creatinine_clearance(age, weight_kg, serum_creatinine, sex):
     return crcl
 
 
+# --------------------------------------------------------------------------
+# Dosing weights -- which weight goes into Cockcroft-Gault
+# --------------------------------------------------------------------------
+
+# Actual weight above this multiple of ideal is treated as obese for dosing.
+# Sources quote 120% to 130%; 130% is used here.
+OBESITY_WEIGHT_RATIO = 1.3
+
+# Fraction of the excess over ideal weight that counts toward clearance.
+ADJUSTMENT_FACTOR = 0.4
+
+
+def ideal_body_weight(height_cm, sex):
+    """Ideal body weight in kg (Devine, 1974).
+
+    Men:   50.0 kg + 2.3 kg per inch over 5 feet
+    Women: 45.5 kg + 2.3 kg per inch over 5 feet
+
+    The formula was derived for adults of 5 feet and above. Below that it is
+    extrapolated and unvalidated, so callers should say so.
+    """
+    sex = sex.strip().lower()[:1]
+    if sex not in ("m", "f"):
+        raise ValueError(f"sex must be m or f, got {sex!r}")
+    if height_cm <= 0:
+        raise ValueError("height must be greater than zero")
+    inches_over_five_feet = (height_cm / CM_PER_INCH) - 60
+    base = 50.0 if sex == "m" else 45.5
+    return base + 2.3 * inches_over_five_feet
+
+
+def adjusted_body_weight(actual_kg, ideal_kg, factor=ADJUSTMENT_FACTOR):
+    """Adjusted body weight in kg: IBW + 0.4 x (actual - ideal).
+
+    Adipose tissue produces little creatinine but is not metabolically inert,
+    so a fraction of the excess weight is counted.
+    """
+    return ideal_kg + factor * (actual_kg - ideal_kg)
+
+
+def indicated_dosing_weight(actual_kg, height_cm, sex):
+    """Which weight is conventionally used in Cockcroft-Gault.
+
+    Returns (name, weight_kg, reason).
+
+    Common pharmacy practice: use ideal body weight; use actual when the
+    patient weighs less than ideal; use adjusted body weight once actual
+    exceeds ideal by more than about 30%.
+
+    Note that Cockcroft and Gault derived the original equation using ACTUAL
+    body weight. Practice varies between institutions, which is why this is
+    advisory and all three weights are reported.
+    """
+    ideal = ideal_body_weight(height_cm, sex)
+    ratio = actual_kg / ideal if ideal > 0 else float("inf")
+
+    if actual_kg < ideal:
+        return ("Actual", actual_kg,
+                "Actual weight is below ideal, so actual is used")
+    if ratio > OBESITY_WEIGHT_RATIO:
+        return ("Adjusted", adjusted_body_weight(actual_kg, ideal),
+                f"Actual weight is {ratio * 100:.0f}% of ideal, above the "
+                f"{OBESITY_WEIGHT_RATIO * 100:.0f}% threshold")
+    return ("Ideal", ideal,
+            f"Actual weight is {ratio * 100:.0f}% of ideal, within the "
+            f"{OBESITY_WEIGHT_RATIO * 100:.0f}% threshold")
+
+
 CRCL_BANDS = [
     ("Normal renal function", ">= 90"),
     ("Mildly decreased", "60 - 89"),
