@@ -7,9 +7,20 @@ This imports the same formulas module the terminal app uses, so the web and
 terminal versions can never disagree about a clinical result.
 """
 
+import importlib
+
 import streamlit as st
 
-from pharmacy_calc import formulas as f
+from pharmacy_calc import formulas as _formulas
+
+# Streamlit re-runs this script on every interaction and re-reads it after a
+# deploy, but it never re-imports modules -- Python keeps the first copy in
+# sys.modules for the life of the process. So when formulas.py gains a new
+# function, the running app can still be holding the old module and fails with
+# AttributeError until someone restarts it by hand. Reloading here reads the
+# current file from disk instead. The module is pure functions and constants
+# with no state, so reloading it is cheap and safe.
+f = importlib.reload(_formulas)
 
 st.set_page_config(
     page_title="Pharmacy Calculator",
